@@ -50,13 +50,12 @@ class Board:
             y_offset  - Offset from y to destination's y coordinate
             dest_cell - Desired value in the destination cell
         """
-        print(x, y, x_offset, y_offset, dest_cell, self.rows, self.cols)
         # Checking the user's input
-        assert(x > 0 and y > 0 and x < self.cols and y < self.rows, "Invalid (x,y) to place")
+        assert x < 0 or y < 0 or x < self.cols or y < self.rows, "Invalid (x,y) to place"
 
         piece = self.board[y][x]
 
-        assert(piece != EMPTY, "Cell asking to place from is empty")
+        assert piece != EMPTY, "Cell asking to place from is empty"
 
         dest_x = x + x_offset
         dest_y = y + y_offset
@@ -71,7 +70,6 @@ class Board:
     def move(self, posn, posn_next, dest_cell, undo):
         """Execute a move of the piece in cell (x, y) to the cell (x + x_offset, y + y_offset).
         """
-        print(posn, posn_next, dest_cell, undo)
         if undo:
             tmp = posn
             posn = posn_next
@@ -105,6 +103,10 @@ def capture_offsets(multi=1):
     return multi * -1, multi * 1, multi* 1, multi * 1
 
 
+def base_move(x, y, x_offset, y_offset, piece):
+    return lambda board, undo=False: board.move((x, y), (x, y + y_offset), piece, undo)
+
+
 def get_legal_moves(board):
     """Get the list legal moves from the current board position.
     """
@@ -127,17 +129,15 @@ def get_legal_moves(board):
         for x in range(board.cols):
             col = board.board[y][x]
             if col == piece:
-                print((x,y,), (x, y + blk_y_off))
                 # If can place in front
                 if board.check_place(x, y, x, y + blk_y_off, EMPTY):
-                    moves.append(lambda board, undo=False: board.move((int(x), int(y)), (int(x), int(y) + blk_y_off), EMPTY, undo))
+                    moves.append(base_move(x, y, 0, blk_y_off, EMPTY))
                 # If there I can capture to the left
                 if board.check_place(x, y, cap_lt_x_off, cap_lt_y_off, op_piece):
-                    moves.append(lambda board, undo=False: board.move((x, y,), (x + cap_lt_x_offset, y + cap_lt_y_offset,), op_piece, undo))
+                    moves.append(base_move(x, y, cap_lt_x_off, cap_lt_y_off, op_piece))
                 # If I can capture to the right
                 if board.check_place(x, y, cap_rt_x_off, cap_rt_y_off, op_piece):
-                    moves.append(lambda board, undo=False: board.move((x, y,), (x + cap_rt_x_off, y + cap_rt_y_off,), op_piece, undo))
-                print((x,y,), (x, y + blk_y_off))
+                    moves.append(base_move(x, y, cap_rt_x_off, cap_rt_y_off, op_piece))
 
     return moves
 
@@ -157,10 +157,7 @@ def posn_value(board):
 
     # Iterate over all possible moves
     for m in moves:
-        print(board)
         m(board)
-
-        print(board)
 
         val = - posn_value(board)
         max_val = max(max_val, val)
@@ -169,8 +166,6 @@ def posn_value(board):
 
         if max_val == 1:
             break
-
-        print(board)
 
     return max_val
 
