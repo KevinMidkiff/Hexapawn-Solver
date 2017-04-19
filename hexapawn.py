@@ -29,7 +29,7 @@ class Board:
     def __str__(self):
         turn = BLACK_TURN
         if self.turn:
-            piece = WHITE_TURN
+            turn = WHITE_TURN
         return "{}\n{}".format(turn, '\n'.join([''.join(i) for i in self.board]))
 
     def switch_turn(self):
@@ -67,7 +67,7 @@ class Board:
 
         return self.board[dest_y][dest_x] == dest_cell
 
-    def move(self, posn, posn_next, dest_cell, undo):
+    def move(self, posn, posn_next, undo):
         """Execute a move of the piece in cell (x, y) to the cell (x + x_offset, y + y_offset).
         """
         if undo:
@@ -75,13 +75,26 @@ class Board:
             posn = posn_next
             posn_next = tmp
 
+            if posn[0] == posn_next[0]:
+                new_cell = EMPTY
+            elif self.turn:
+                new_cell = BLACK_PIECE
+            else:
+                new_cell = WHITE_PIECE
+        else:
+            new_cell = EMPTY
+
         cell = self.board[posn[1]][posn[0]]
         self.board[posn_next[1]][posn_next[0]] = cell
+        self.board[posn[1]][posn[0]] = new_cell
 
-        if dest_cell != EMPTY:
-            self.board[posn[1]][posn[0]] = EMPTY
-        else:
-            self.board[posn[1]][posn[0]] = dest_cell
+        # if dest_cell != EMPTY:
+        #     piece = WHITE_PIECE
+        #     if self.turn:
+        #         piece = BLACK_PIECE
+        #     self.board[posn[1]][posn[0]] = EMPTY
+        # else:
+        #     self.board[posn[1]][posn[0]] = dest_cell
 
 
 def block_offsets(multi=1):
@@ -103,8 +116,15 @@ def capture_offsets(multi=1):
     return multi * -1, multi * 1, multi* 1, multi * 1
 
 
-def base_move(x, y, x_offset, y_offset, piece):
-    return lambda board, undo=False: board.move((x, y), (x, y + y_offset), piece, undo)
+def base_move(x, y, x_offset, y_offset):
+    
+    def do_move(level, board, undo=False):
+        print('\t' * level + 'do_move() <-', (x,y), (x + x_offset, y + y_offset), undo)
+        print('\t' * level + 'Board Before\n', board)
+        board.move((x, y), (x + x_offset, y + y_offset), undo)
+        print('\t' * level + 'Board After\n', board)
+
+    return do_move
 
 
 def get_legal_moves(board):
@@ -129,22 +149,23 @@ def get_legal_moves(board):
         for x in range(board.cols):
             col = board.board[y][x]
             if col == piece:
-                # If can place in front
-                if board.check_place(x, y, x, y + blk_y_off, EMPTY):
-                    moves.append(base_move(x, y, 0, blk_y_off, EMPTY))
                 # If there I can capture to the left
                 if board.check_place(x, y, cap_lt_x_off, cap_lt_y_off, op_piece):
-                    moves.append(base_move(x, y, cap_lt_x_off, cap_lt_y_off, op_piece))
+                    moves.append(base_move(x, y, cap_lt_x_off, cap_lt_y_off))
                 # If I can capture to the right
                 if board.check_place(x, y, cap_rt_x_off, cap_rt_y_off, op_piece):
-                    moves.append(base_move(x, y, cap_rt_x_off, cap_rt_y_off, op_piece))
+                    moves.append(base_move(x, y, cap_rt_x_off, cap_rt_y_off))
+                # If can place in front
+                if board.check_place(x, y, 0, blk_y_off, EMPTY):
+                    moves.append(base_move(x, y, 0, blk_y_off))
 
     return moves
 
 
-def posn_value(board):
+def posn_value(level, board):
     """Get the next position value.
     """
+    print('\t' * level + '### RECURSION LEVEL', level)
     # Get the list of legal moves from my current position
     moves = get_legal_moves(board)
 
@@ -157,12 +178,16 @@ def posn_value(board):
 
     # Iterate over all possible moves
     for m in moves:
-        m(board)
+        m(level, board)
 
-        val = - posn_value(board)
+        board.switch_turn()
+        val = - posn_value(level+1, board)
+        print('\t' * level + '### BACK TO RECURSION LEVEL', level)
+        board.switch_turn()
+
         max_val = max(max_val, val)
 
-        m(board, undo=True)
+        m(level, board, undo=True)
 
         if max_val == 1:
             break
@@ -180,7 +205,7 @@ def main():
         board.append(list(line.strip('\n')))
 
     b = Board(board, turn)
-    print(posn_value(b))
+    print(posn_value(0, b))
 
 
 if __name__ == '__main__':
