@@ -1,11 +1,15 @@
 """Hexapawn Solver for CS442P at Portland state university.
 
+Thanks for Eli Cook for brainstorming design, and working through
+bugs.
+
 :author: Kevin Midkiff
 """
-
 import sys
 
 
+# Globals which represent the static characters which
+# represent the board.
 WHITE_TURN = 'W'
 BLACK_TURN = 'B'
 BLACK_PIECE = 'p'
@@ -17,6 +21,13 @@ class Board:
     """Representation of the board.
     """
     def __init__(self, board, init_turn):
+        """Constructor
+
+        Arguments:
+            board     - Multi-dimensional array of characters representing
+                        a board's state.
+            init_turn - Character representing whose turn it is, i.e. W or B
+        """
         self.board = board
         self.rows = len(board)
         self.cols = len(board[0])
@@ -27,6 +38,8 @@ class Board:
             self.turn = False
 
     def __str__(self):
+        """Returns string for the ASCII representation of the board.
+        """
         turn = BLACK_TURN
         if self.turn:
             turn = WHITE_TURN
@@ -38,10 +51,10 @@ class Board:
         self.turn = not self.turn
 
     def check_place(self, x, y, x_offset, y_offset, dest_cell):
-        """Check if piece that is in cell (x,y) can be placed in cell (x + x_offset, y + y_offset).
+        """Check if the piece that is in cell (x,y) can be placed in the cell (x + x_offset, y + y_offset).
         dest_cell represents what the destination cell should be for the placement to be possible.
         For example, if you are looking to capture a piece at the destination cell, then dest_cell
-        should be the type of your opponents piece.
+        should be the type of your opponents piece, i.e. P or p.
 
         Arguments:
             x         - Source cell x coordinate
@@ -55,8 +68,10 @@ class Board:
 
         piece = self.board[y][x]
 
+        # Verify that we are not trying to check if an empty cell can be moved
         assert piece != EMPTY, "Cell asking to place from is empty"
 
+        # Calculate the destination cell's (x,y)
         dest_x = x + x_offset
         dest_y = y + y_offset
 
@@ -68,9 +83,14 @@ class Board:
         return self.board[dest_y][dest_x] == dest_cell
 
     def move(self, posn, posn_next, undo):
-        """Execute a move of the piece in cell (x, y) to the cell (x + x_offset, y + y_offset).
+        """Execute a move of the piece in cell posn to the cell posn_next. If the
+        undo flag is set, then undo the move that was previously taken from posn to
+        posn_next.
         """
         if undo:
+            # If we are undoing, then swap posn and posn_next (since we are now going
+            # backwards), then figure out what the new_cell should be, i.e. if we
+            # previously captured a pawn, then we should replace that pawn
             tmp = posn
             posn = posn_next
             posn_next = tmp
@@ -84,17 +104,18 @@ class Board:
         else:
             new_cell = EMPTY
 
+        # Swap the values, and put the specified value into the posn cell
         cell = self.board[posn[1]][posn[0]]
         self.board[posn_next[1]][posn_next[0]] = cell
         self.board[posn[1]][posn[0]] = new_cell
 
-        # if dest_cell != EMPTY:
-        #     piece = WHITE_PIECE
-        #     if self.turn:
-        #         piece = BLACK_PIECE
-        #     self.board[posn[1]][posn[0]] = EMPTY
-        # else:
-        #     self.board[posn[1]][posn[0]] = dest_cell
+        # Check if we have won by promoting a pawn to a queen
+        if self.turn:
+            # Check if white won by promotion
+            return not undo and posn_next[1] == 0
+        else:
+            # Check if black won by promotion
+            return not undo and posn_next[1] == (self.rows - 1)
 
 
 def block_offsets(multi=1):
@@ -117,12 +138,11 @@ def capture_offsets(multi=1):
 
 
 def base_move(x, y, x_offset, y_offset):
-    
-    def do_move(level, board, undo=False):
-        print('\t' * level + 'do_move() <-', (x,y), (x + x_offset, y + y_offset), undo)
-        print('\t' * level + 'Board Before\n', board)
-        board.move((x, y), (x + x_offset, y + y_offset), undo)
-        print('\t' * level + 'Board After\n', board)
+    """Base move method which returns a method to execute the move on the
+    board that is passed into the method.
+    """
+    def do_move(board, undo=False):
+        return board.move((x, y), (x + x_offset, y + y_offset), undo)
 
     return do_move
 
@@ -149,7 +169,7 @@ def get_legal_moves(board):
         for x in range(board.cols):
             col = board.board[y][x]
             if col == piece:
-                # If there I can capture to the left
+                # If I can capture to the left
                 if board.check_place(x, y, cap_lt_x_off, cap_lt_y_off, op_piece):
                     moves.append(base_move(x, y, cap_lt_x_off, cap_lt_y_off))
                 # If I can capture to the right
@@ -162,10 +182,9 @@ def get_legal_moves(board):
     return moves
 
 
-def posn_value(level, board):
-    """Get the next position value.
+def find_winner(board):
+    """Recursively find who wins the game assuming perfect play.
     """
-    print('\t' * level + '### RECURSION LEVEL', level)
     # Get the list of legal moves from my current position
     moves = get_legal_moves(board)
 
@@ -178,17 +197,24 @@ def posn_value(level, board):
 
     # Iterate over all possible moves
     for m in moves:
-        m(level, board)
+        # Execute the move and check if we've won as a result of that move
+        if m(board):
+            val = 1
+        else:
+            # If we haven't won, switch turns and try to find the winner at
+            # the next level of the recursion
+            board.switch_turn()
+            val = - find_winner(board)
+            # Switch turn back to my turn so future actions on the board are
+            # done correctly
+            board.switch_turn()
 
-        board.switch_turn()
-        val = - posn_value(level+1, board)
-        print('\t' * level + '### BACK TO RECURSION LEVEL', level)
-        board.switch_turn()
+        # Undo the move we just tried
+        m(board, undo=True)
 
+        # Check if the new value is greater than the previous max value
         max_val = max(max_val, val)
-
-        m(level, board, undo=True)
-
+        # Quick trying new moves if we've won
         if max_val == 1:
             break
 
@@ -197,7 +223,6 @@ def posn_value(level, board):
 
 def main():
     board = []
-
     lines = sys.stdin.readlines()
     turn = lines[0].strip('\n')
 
@@ -205,7 +230,7 @@ def main():
         board.append(list(line.strip('\n')))
 
     b = Board(board, turn)
-    print(posn_value(0, b))
+    print(find_winner(b))
 
 
 if __name__ == '__main__':
